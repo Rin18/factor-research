@@ -1,0 +1,17 @@
+[project]
+name = "2026-10-09-factor-research"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "Rin18", email = "106043571+Rin18@users.noreply.github.com" }
+]
+requires-python = ">=3.14"
+dependencies = []
+
+[project.scripts]
+2026-10-09-factor-research = "2026_10_09_factor_research:main"
+
+[build-system]
+requires = ["uv_build>=0.12.24,<0.13.0"]
+build-backend = "uv_build"
