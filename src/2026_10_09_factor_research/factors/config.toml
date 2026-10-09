@@ -1,0 +1,12 @@
+[data]
+# Relative to this config file; matches convert_to_parquet.py output.
+input = "../../../parquet"
+symbol = "BTCUSDT"
+
+[timestamps]
+# One factor row per second, on the Unix epoch grid. Both bounds inclusive.
+interval_ns = 30_000_000_000
+# Omit bounds to use the BBO/trade/depth recv_ns time overlap.
+# Explicit bounds are Int64 ns and are limited to that overlap.
+# start_ns = 1791244800000000000
+# end_ns = 1791331200000000000
