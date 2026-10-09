@@ -13,6 +13,8 @@ Rows with fewer than 100 valid levels on either side are omitted; counts
 are not exported. Source segments are ordered by their filename's
 hour/session; records are not sorted or
 deduplicated inside segments. Only finalized .bin.zst files are included.
+Trade exports is_buyer_maker and is_rpi as booleans decoded from flags
+bits 1 and 2; the raw flags column is not exported.
 """
 
 from __future__ import annotations
@@ -34,6 +36,9 @@ import zstandard as zstd
 
 CONFIG_PATH = Path(__file__).resolve().with_name("config.toml")
 DEPTH_LEVELS = 100
+FLAG_BUYER_MAKER = 1
+FLAG_RPI = 2
+TRADE_FLAG_MASKS = {"is_buyer_maker": FLAG_BUYER_MAKER, "is_rpi": FLAG_RPI}
 COMMON = [("recv_ns", "<i8"), ("event_ns", "<i8"), ("transact_ns", "<i8")]
 DTYPES = {
     "bbo": np.dtype(COMMON + [
@@ -149,7 +154,7 @@ def record_batches(reader, dtype: np.dtype, batch_rows: int):
 def schema_for(stream: str, header: dict) -> pa.Schema:
     fields = []
     for name in DTYPES[stream].names:
-        if name in ("_pad", "n_bids", "n_asks"):
+        if name in ("_pad", "n_bids", "n_asks", "flags"):
             continue
         if name in ("bids", "asks"):
             for level in range(1, DEPTH_LEVELS + 1):
@@ -160,14 +165,16 @@ def schema_for(stream: str, header: dict) -> pa.Schema:
             continue
         arrow_type = pa.from_numpy_dtype(DTYPES[stream].fields[name][0])
         fields.append(pa.field(name, arrow_type, nullable=False))
+    if stream == "trade":
+        fields.extend(pa.field(name, pa.bool_(), nullable=False) for name in TRADE_FLAG_MASKS)
     # hour/session vary across segments and are recorded in source_headers instead.
     stable_header = {k: v for k, v in header.items() if k not in ("hour", "session")}
     metadata = {k: json.dumps(v).encode() for k, v in stable_header.items()}
     metadata["time_unit"] = b"ns"
     metadata["price_quantity_encoding"] = b"fixed_point_int64"
     if stream == "trade":
-        metadata["flag_buyer_maker"] = b"1"
-        metadata["flag_rpi"] = b"2"
+        metadata["flag_buyer_maker"] = str(FLAG_BUYER_MAKER).encode()
+        metadata["flag_rpi"] = str(FLAG_RPI).encode()
     elif stream == "depth":
         metadata["depth_layout"] = b"wide"
         metadata["depth_levels"] = str(DEPTH_LEVELS).encode()
@@ -202,7 +209,15 @@ def to_table(records: np.ndarray, schema: pa.Schema) -> pa.Table:
         arrays.extend(depth_columns(records, "bids"))
         arrays.extend(depth_columns(records, "asks"))
     else:
-        arrays = [pa.array(records[field.name], type=field.type) for field in schema]
+        arrays = [
+            pa.array(
+                (records["flags"] & TRADE_FLAG_MASKS[field.name]) != 0
+                if field.name in TRADE_FLAG_MASKS
+                else records[field.name],
+                type=field.type,
+            )
+            for field in schema
+        ]
     return pa.Table.from_arrays(arrays, schema=schema)
 
 
