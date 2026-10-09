@@ -7,7 +7,7 @@ authors = [
     { name = "Rin18", email = "106043571+Rin18@users.noreply.github.com" }
 ]
 requires-python = ">=3.14"
-dependencies = []
+dependencies = ["numpy", "pyarrow", "zstandard"]
 
 [project.scripts]
 2026-10-09-factor-research = "2026_10_09_factor_research:main"

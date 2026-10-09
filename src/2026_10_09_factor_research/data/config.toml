@@ -1,0 +1,12 @@
+[convert_to_parquet]
+# Paths are relative to this config.toml file.
+input = "../../../binance-15-symbols"
+output = "../../../parquet"
+
+# Empty means all symbols; for example: ["BTCUSDT", "ETHUSDT"].
+symbols = []
+streams = ["bbo", "trade", "depth"]
+batch_rows = 8192
+
+# Existing Parquet files are skipped unless this is true.
+overwrite = true
