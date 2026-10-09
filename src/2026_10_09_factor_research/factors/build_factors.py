@@ -20,6 +20,7 @@ __package__ = "2026_10_09_factor_research.factors"
 
 from .obi import generate_multi_obi_factor, generate_obi_factor
 from .returns import generate_return
+from .return_volume_ratio import generate_return_volume_ratio_factor
 from .trade_imbalance import (
     generate_trade_count_imbalance_factor,
     generate_trade_imbalance_factor,
@@ -126,6 +127,8 @@ def generate_factors(
         pressure_period="5s",
         reference_period="1m",
     )
+    for period in ("5s", "1m"):
+        factors = generate_return_volume_ratio_factor(factors, bbo, trade, depth, period=period)
     return factors
 
 
