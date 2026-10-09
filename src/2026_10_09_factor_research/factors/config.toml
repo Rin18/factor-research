@@ -4,12 +4,28 @@ input = "../../../parquet"
 symbol = "BTCUSDT"
 
 [timestamps]
-# One factor row per second, on the Unix epoch grid. Both bounds inclusive.
-interval_ns = 30_000_000_000
+interval_ns = 100_000_000
 # Omit bounds to use the BBO/trade/depth recv_ns time overlap.
 # Explicit bounds are Int64 ns and are limited to that overlap.
 # start_ns = 1791244800000000000
 # end_ns = 1791331200000000000
 
 [returns]
-future_periods = ["30s", "1m", "5m"]
+future_periods = [
+    "1ms",
+    "2ms",
+    "3ms",
+    "5ms",
+    "10ms",
+    "25ms",
+    "50ms",
+    "100ms",
+    "300ms",
+    "500ms",
+    "1s",
+    "2.5s",
+    "5s",
+    "10s",
+    "30s",
+    "60s",
+]

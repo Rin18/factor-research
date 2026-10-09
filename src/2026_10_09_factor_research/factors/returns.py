@@ -1,6 +1,7 @@
 """Forward returns from BBO midpoint prices."""
 
 from datetime import timedelta
+from fractions import Fraction
 import re
 
 import polars as pl
@@ -17,7 +18,8 @@ def generate_return(
     Use the last BBO received at or before each price observation time;
     equal timestamps use the last input row. Timestamps must be Int64 ns
     and data must be for one symbol. Periods are positive fixed durations
-    (ns/us/ms/s/m/h/d/w), or timedelta; a day means 24 hours.
+    (ns/us/ms/s/m/h/d/w), including decimals such as "2.5s", or timedelta;
+    a day means 24 hours. Durations must resolve to whole nanoseconds.
 
     Missing prices, non-positive midpoint prices, null target timestamps,
     and observation times beyond the last BBO timestamp yield null.
@@ -39,17 +41,22 @@ def generate_return(
             nanoseconds = microseconds * 1_000
             label = f"{microseconds}us"
         elif isinstance(period, str) and re.fullmatch(
-            r"(?:\d+(?:ns|us|ms|s|m|h|d|w))+", period
+            r"(?:\d+(?:\.\d+)?(?:ns|us|ms|s|m|h|d|w))+", period
         ):
             nanoseconds = sum(
-                int(value) * duration_units[unit]
-                for value, unit in re.findall(r"(\d+)(ns|us|ms|s|m|h|d|w)", period)
+                Fraction(value) * duration_units[unit]
+                for value, unit in re.findall(
+                    r"(\d+(?:\.\d+)?)(ns|us|ms|s|m|h|d|w)", period
+                )
             )
+            if nanoseconds.denominator != 1:
+                raise ValueError(f"future period {period!r} must resolve to whole nanoseconds")
+            nanoseconds = int(nanoseconds)
             label = period
         else:
-            raise ValueError("future periods must be positive fixed durations")
+            raise ValueError(f"future period {period!r} must be a positive fixed duration")
         if not 0 < nanoseconds <= 2**63 - 1:
-            raise ValueError("future periods must be positive and fit in Int64 ns")
+            raise ValueError(f"future period {period!r} must be positive and fit in Int64 ns")
         periods[f"return_{label}"] = nanoseconds
 
     bbo_timestamp_column = "recv_ns"

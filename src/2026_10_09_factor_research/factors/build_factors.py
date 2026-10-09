@@ -82,7 +82,9 @@ def build_factors() -> pl.DataFrame:
         }
     )
     factors = generate_factors(factors, bbo, trade, depth)
-    return generate_return(factors, bbo, future_periods=config["returns"]["future_periods"])
+    return generate_return(
+        factors, bbo, future_periods=config["returns"]["future_periods"]
+    )
 
 
 def generate_factors(
@@ -93,11 +95,16 @@ def generate_factors(
 ) -> pl.DataFrame:
     """Append factor columns at the input timestamps and return the DataFrame."""
     factors = generate_obi_factor(factors, bbo, trade, depth)
-    for levels in (5, 10, 20):
+    for levels in (5, 10, 20, 50, 100):
         factors = generate_multi_obi_factor(
-            factors, bbo, trade, depth, levels=levels, decay_bps=5.0,
+            factors,
+            bbo,
+            trade,
+            depth,
+            levels=levels,
+            decay_bps=0.5,
         )
-    for period in ("5s", "1m"):
+    for period in ("5s", "15s", "30s", "1m", "5m", "15m", "30m"):
         factors = generate_trade_imbalance_factor(
             factors,
             bbo,
@@ -105,7 +112,7 @@ def generate_factors(
             depth,
             history_period=period,
         )
-    for period in ("5s", "1m"):
+    for period in ("5s", "15s", "30s", "1m", "5m", "15m", "30m"):
         factors = generate_trade_count_imbalance_factor(
             factors,
             bbo,
@@ -118,28 +125,32 @@ def generate_factors(
         bbo,
         trade,
         depth,
-        pressure_period="5s",
-        reference_period="1m",
+        pressure_period="30s",
+        reference_period="1h",
     )
     factors = generate_trade_count_pressure_factor(
         factors,
         bbo,
         trade,
         depth,
-        pressure_period="5s",
-        reference_period="1m",
+        pressure_period="30s",
+        reference_period="1h",
     )
-    for period in ("5s", "1m"):
-        factors = generate_return_volume_ratio_factor(factors, bbo, trade, depth, period=period)
-    for period in ("5s", "1m"):
+    for period in ("5s", "15s", "30s", "1m", "5m", "15m", "30m"):
+        factors = generate_return_volume_ratio_factor(
+            factors, bbo, trade, depth, period=period
+        )
+    for period in ("5s", "15s", "30s", "1m", "5m", "15m", "30m"):
         factors = generate_ofi_factor(factors, bbo, trade, depth, period=period)
-    for period in ("5s", "1m"):
-        factors = generate_price_versus_mid_factor(factors, bbo, trade, depth, period=period)
+    for period in ("5s", "15s", "30s", "1m", "5m", "15m", "30m"):
+        factors = generate_price_versus_mid_factor(
+            factors, bbo, trade, depth, period=period
+        )
     return factors
 
 
 def main() -> None:
-    print(build_factors())
+    build_factors().write_parquet("factors.parquet")
 
 
 if __name__ == "__main__":
