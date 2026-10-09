@@ -19,6 +19,7 @@ import polars as pl
 __package__ = "2026_10_09_factor_research.factors"
 
 from .obi import generate_multi_obi_factor, generate_obi_factor
+from .returns import generate_return
 from .trade_imbalance import (
     generate_trade_count_imbalance_factor,
     generate_trade_imbalance_factor,
@@ -77,7 +78,8 @@ def build_factors() -> pl.DataFrame:
             ),
         }
     )
-    return generate_factors(factors, bbo, trade, depth)
+    factors = generate_factors(factors, bbo, trade, depth)
+    return generate_return(factors, bbo, future_periods=config["returns"]["future_periods"])
 
 
 def generate_factors(

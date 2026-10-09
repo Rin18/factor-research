@@ -10,3 +10,6 @@ interval_ns = 30_000_000_000
 # Explicit bounds are Int64 ns and are limited to that overlap.
 # start_ns = 1791244800000000000
 # end_ns = 1791331200000000000
+
+[returns]
+future_periods = ["30s", "1m", "5m"]
