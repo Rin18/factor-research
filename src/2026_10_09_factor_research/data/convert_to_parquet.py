@@ -8,8 +8,10 @@ section. Relative input/output paths are resolved against that file.
 
 Prices/quantities remain fixed-point int64; divide by 10**scale (schema
 metadata) for decimals. Timestamps remain int64 nanoseconds. Depth stores
-only valid levels as list<struct<px: int64, qty: int64>>. Source segments
-are ordered by their filename's hour/session; records are not sorted or
+100 levels per side as bid_px_1, bid_qty_1, ..., ask_px_100, ask_qty_100.
+Rows with fewer than 100 valid levels on either side are omitted; counts
+are not exported. Source segments are ordered by their filename's
+hour/session; records are not sorted or
 deduplicated inside segments. Only finalized .bin.zst files are included.
 """
 
@@ -31,6 +33,7 @@ import zstandard as zstd
 
 
 CONFIG_PATH = Path(__file__).resolve().with_name("config.toml")
+DEPTH_LEVELS = 100
 COMMON = [("recv_ns", "<i8"), ("event_ns", "<i8"), ("transact_ns", "<i8")]
 DTYPES = {
     "bbo": np.dtype(COMMON + [
@@ -43,11 +46,10 @@ DTYPES = {
     ]),
     "depth": np.dtype(COMMON + [
         ("update_id", "<u8"), ("n_bids", "u1"), ("n_asks", "u1"),
-        ("_pad", "u1", 6), ("bids", "<i8", (100, 2)),
-        ("asks", "<i8", (100, 2)),
+        ("_pad", "u1", 6), ("bids", "<i8", (DEPTH_LEVELS, 2)),
+        ("asks", "<i8", (DEPTH_LEVELS, 2)),
     ]),
 }
-LEVEL_TYPE = pa.list_(pa.struct([("px", pa.int64()), ("qty", pa.int64())]))
 
 
 @dataclass(frozen=True)
@@ -149,9 +151,14 @@ def schema_for(stream: str, header: dict) -> pa.Schema:
     for name in DTYPES[stream].names:
         if name in ("_pad", "n_bids", "n_asks"):
             continue
-        arrow_type = LEVEL_TYPE if name in ("bids", "asks") else pa.from_numpy_dtype(
-            DTYPES[stream].fields[name][0]
-        )
+        if name in ("bids", "asks"):
+            for level in range(1, DEPTH_LEVELS + 1):
+                for value in ("px", "qty"):
+                    fields.append(pa.field(
+                        f"{name[:-1]}_{value}_{level}", pa.int64(), nullable=False,
+                    ))
+            continue
+        arrow_type = pa.from_numpy_dtype(DTYPES[stream].fields[name][0])
         fields.append(pa.field(name, arrow_type, nullable=False))
     # hour/session vary across segments and are recorded in source_headers instead.
     stable_header = {k: v for k, v in header.items() if k not in ("hour", "session")}
@@ -161,30 +168,41 @@ def schema_for(stream: str, header: dict) -> pa.Schema:
     if stream == "trade":
         metadata["flag_buyer_maker"] = b"1"
         metadata["flag_rpi"] = b"2"
+    elif stream == "depth":
+        metadata["depth_layout"] = b"wide"
+        metadata["depth_levels"] = str(DEPTH_LEVELS).encode()
+        metadata["depth_row_filter"] = b"both_sides_have_100_valid_levels"
     return pa.schema(fields, metadata=metadata)
 
 
-def depth_array(records: np.ndarray, side: str) -> pa.ListArray:
-    counts = records[f"n_{side}"].astype(np.int32)
-    if np.any(counts > 100):
-        raise ValueError(f"Invalid {side} count: exceeds 100 levels")
-    offsets = np.empty(len(records) + 1, dtype=np.int32)
-    offsets[0] = 0
-    np.cumsum(counts, out=offsets[1:])
-    valid = np.arange(100)[None, :] < counts[:, None]
-    levels = records[side][valid]
-    values = pa.StructArray.from_arrays(
-        [pa.array(levels[:, 0]), pa.array(levels[:, 1])], names=["px", "qty"]
-    )
-    return pa.ListArray.from_arrays(offsets, values)
+def depth_columns(records: np.ndarray, side: str) -> list[pa.Array]:
+    counts = records[f"n_{side}"]
+    if np.any(counts != DEPTH_LEVELS):
+        raise ValueError(f"{side} must contain exactly {DEPTH_LEVELS} valid levels")
+    columns = []
+    for level in range(DEPTH_LEVELS):
+        for value in range(2):
+            columns.append(pa.array(records[side][:, level, value]))
+    return columns
 
 
 def to_table(records: np.ndarray, schema: pa.Schema) -> pa.Table:
-    arrays = [
-        depth_array(records, field.name) if field.name in ("bids", "asks")
-        else pa.array(records[field.name], type=field.type)
-        for field in schema
-    ]
+    if "bids" in records.dtype.names:
+        for side in ("bids", "asks"):
+            if np.any(records[f"n_{side}"] > DEPTH_LEVELS):
+                raise ValueError(f"Invalid {side} count: exceeds {DEPTH_LEVELS} levels")
+        records = records[
+            (records["n_bids"] == DEPTH_LEVELS)
+            & (records["n_asks"] == DEPTH_LEVELS)
+        ]
+        arrays = [
+            pa.array(records[name], type=schema.field(name).type)
+            for name in ("recv_ns", "event_ns", "transact_ns", "update_id")
+        ]
+        arrays.extend(depth_columns(records, "bids"))
+        arrays.extend(depth_columns(records, "asks"))
+    else:
+        arrays = [pa.array(records[field.name], type=field.type) for field in schema]
     return pa.Table.from_arrays(arrays, schema=schema)
 
 
@@ -213,6 +231,7 @@ def convert_group(
     ) as temporary:
         temp_path = Path(temporary.name)
     rows = 0
+    filtered_rows = 0
     schema = None
     writer = None
     headers = []
@@ -232,13 +251,20 @@ def convert_group(
                 headers.append({"file": str(path), "header": header})
                 for records in record_batches(reader, DTYPES[stream], batch_rows):
                     table = to_table(records, schema)
-                    writer.write_table(table, row_group_size=batch_rows)
-                    rows += len(records)
+                    filtered_rows += len(records) - table.num_rows
+                    if table.num_rows:
+                        writer.write_table(table, row_group_size=batch_rows)
+                    rows += table.num_rows
             if index == 1 or index % 10 == 0 or index == len(paths):
-                print(f"{stream}/{symbol}: {index}/{len(paths)} files, {rows:,} rows", flush=True)
+                print(
+                    f"{stream}/{symbol}: {index}/{len(paths)} files, "
+                    f"{rows:,} rows, {filtered_rows:,} filtered", flush=True,
+                )
         if writer is None:
             raise ValueError("No source files provided")
-        writer.add_key_value_metadata({"source_headers": json.dumps(headers)})
+        writer.add_key_value_metadata({
+            "source_headers": json.dumps(headers), "filtered_rows": str(filtered_rows),
+        })
         writer.close()
         writer = None
         if pq.ParquetFile(temp_path).metadata.num_rows != rows:
