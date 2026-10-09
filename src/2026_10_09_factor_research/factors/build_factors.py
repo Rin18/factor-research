@@ -91,7 +91,9 @@ def generate_factors(
     """Append factor columns at the input timestamps and return the DataFrame."""
     factors = generate_obi_factor(factors, bbo, trade, depth)
     for levels in (5, 10, 20):
-        factors = generate_multi_obi_factor(factors, bbo, trade, depth, levels=levels)
+        factors = generate_multi_obi_factor(
+            factors, bbo, trade, depth, levels=levels, decay_bps=5.0,
+        )
     for period in ("5s", "1m"):
         factors = generate_trade_imbalance_factor(
             factors,
