@@ -22,7 +22,8 @@ def generate_trade_imbalance_factor(
     Sum quantities in (timestamp - history_period, timestamp]. A buyer
     maker implies an aggressive sell; otherwise the trade is an aggressive
     buy. Compute (buy_qty - sell_qty) / (buy_qty + sell_qty). Windows with
-    no volume yield null. Trades sharing a timestamp are all included.
+    no volume yield 0.0; null target timestamps yield null. Trades sharing
+    a timestamp are all included.
 
     Preserve original row order and other columns without mutating factors;
     replace the output column if it exists. BBO and depth are accepted for
@@ -70,7 +71,7 @@ def generate_trade_imbalance_factor(
             "timestamp",
             pl.when(pl.col("_total_qty") != 0)
             .then(pl.col("_signed_qty") / pl.col("_total_qty"))
-            .otherwise(None)
+            .otherwise(0.0)
             .alias(factor_column),
         )
     )
@@ -95,7 +96,8 @@ def generate_trade_count_imbalance_factor(
 
     In (timestamp - history_period, timestamp], count aggressive buys
     (is_buyer_maker=False) and sells (True). Compute (buy_count - sell_count)
-    / (buy_count + sell_count); no trades yields null. Each trade row counts
+    / (buy_count + sell_count); no trades yields 0.0, and null target
+    timestamps yield null. Each trade row counts
     once, including trades sharing a timestamp; quantity is not used.
 
     Inputs must be for one symbol. ``factors.timestamp`` and ``trade.recv_ns``
@@ -145,7 +147,7 @@ def generate_trade_count_imbalance_factor(
             "timestamp",
             pl.when(pl.col("_total_count") != 0)
             .then(pl.col("_signed_count") / pl.col("_total_count"))
-            .otherwise(None)
+            .otherwise(0.0)
             .alias(factor_column),
         )
     )

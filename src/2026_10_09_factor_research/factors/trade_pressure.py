@@ -30,7 +30,10 @@ def generate_trade_pressure_factor(
 
     Periods must be positive fixed durations: strings such as "5s", "1m",
     "1h30m" (ns/us/ms/s/m/h/d/w), or timedelta. A day means 24 hours.
-    No reference notional yields null. No trades in the pressure period
+    Targets earlier than the first trade timestamp plus reference_period
+    yield null, as do empty trade data and null target timestamps.
+    Once the reference window is complete, no reference notional yields zero.
+    No trades in the pressure period
     yields zero when the denominator is positive. Preserve input rows, order, and other
     columns without mutation; replace the output column if it exists.
     BBO and depth are accepted for the common interface and not evaluated.
@@ -117,11 +120,19 @@ def generate_trade_pressure_factor(
     pressure = (
         targets.join(numerator, on="timestamp", how="left")
         .join(denominator, on="timestamp", how="left")
+        .join(trades.select(pl.col("timestamp").min().alias("_trade_start")), how="cross")
         .sort("_row_index")
         .select(
-            pl.when(pl.col("_mean_notional") != 0)
+            pl.when(
+                pl.col("timestamp").is_null()
+                | pl.col("_trade_start").is_null()
+                | ((pl.col("timestamp") - pl.col("_trade_start"))
+                   .dt.total_nanoseconds() < reference_period_ns)
+            )
+            .then(None)
+            .when(pl.col("_mean_notional") != 0)
             .then(pl.col("_signed_notional") / pl.col("_mean_notional"))
-            .otherwise(None)
+            .otherwise(0.0)
             .alias(factor_column)
         )
         .collect()
@@ -153,7 +164,10 @@ def generate_trade_count_pressure_factor(
 
     Periods must be positive fixed durations: strings such as "5s", "1m",
     "1h30m" (ns/us/ms/s/m/h/d/w), or timedelta. A day means 24 hours.
-    No reference trades yields null. No trades in the pressure period yields
+    Targets earlier than the first trade timestamp plus reference_period
+    yield null, as do empty trade data and null target timestamps.
+    Once the reference window is complete, no reference trades yields zero.
+    No trades in the pressure period yields
     zero when the reference count is positive. Preserve input rows, order,
     and other columns without mutation; replace the output column if it
     exists. BBO and depth are accepted for the common interface and not evaluated.
@@ -239,11 +253,19 @@ def generate_trade_count_pressure_factor(
     pressure = (
         targets.join(numerator, on="timestamp", how="left")
         .join(denominator, on="timestamp", how="left")
+        .join(trades.select(pl.col("timestamp").min().alias("_trade_start")), how="cross")
         .sort("_row_index")
         .select(
-            pl.when(pl.col("_mean_count") != 0)
+            pl.when(
+                pl.col("timestamp").is_null()
+                | pl.col("_trade_start").is_null()
+                | ((pl.col("timestamp") - pl.col("_trade_start"))
+                   .dt.total_nanoseconds() < reference_period_ns)
+            )
+            .then(None)
+            .when(pl.col("_mean_count") != 0)
             .then(pl.col("_signed_count") / pl.col("_mean_count"))
-            .otherwise(None)
+            .otherwise(0.0)
             .alias(factor_column)
         )
         .collect()
