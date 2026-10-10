@@ -7,7 +7,8 @@ or:
 
 Read the adjacent config.toml. Paths inside the configuration are relative
 to that file. Timestamps remain Int64 nanoseconds.
-The CLI prints only the generated DataFrame; build_factors returns it.
+The CLI saves factors/{symbol}_factors.parquet in the project root;
+build_factors returns the generated DataFrame.
 """
 
 import tomllib
@@ -22,6 +23,7 @@ from .obi import generate_multi_obi_factor, generate_obi_factor
 from .ofi import generate_ofi_factor
 from .price_versus_mid import generate_price_versus_mid_factor
 from .returns import generate_return
+from .rpi import generate_rpi_factors
 from .return_volume_ratio import generate_return_volume_ratio_factor
 from .trade_imbalance import (
     generate_trade_count_imbalance_factor,
@@ -104,21 +106,17 @@ def generate_factors(
             levels=levels,
             decay_bps=0.5,
         )
-    for period in ("5s", "15s", "30s", "1m", "5m", "15m", "30m"):
-        factors = generate_trade_imbalance_factor(
-            factors,
-            bbo,
-            trade,
-            depth,
-            history_period=period,
+    for period in ("5s", "15s", "30s", "1m"):
+        factors = generate_rpi_factors(
+            factors, bbo, trade, depth, history_period=period
         )
-    for period in ("5s", "15s", "30s", "1m", "5m", "15m", "30m"):
+    for period in ("5s", "15s", "30s", "1m"):
+        factors = generate_trade_imbalance_factor(
+            factors, bbo, trade, depth, history_period=period
+        )
+    for period in ("5s", "15s", "30s", "1m"):
         factors = generate_trade_count_imbalance_factor(
-            factors,
-            bbo,
-            trade,
-            depth,
-            history_period=period,
+            factors, bbo, trade, depth, history_period=period
         )
     factors = generate_trade_pressure_factor(
         factors,
@@ -136,13 +134,13 @@ def generate_factors(
         pressure_period="30s",
         reference_period="1h",
     )
-    for period in ("5s", "15s", "30s", "1m", "5m", "15m", "30m"):
+    for period in ("5s", "15s", "30s", "1m"):
         factors = generate_return_volume_ratio_factor(
             factors, bbo, trade, depth, period=period
         )
-    for period in ("5s", "15s", "30s", "1m", "5m", "15m", "30m"):
+    for period in ("5s", "15s", "30s", "1m"):
         factors = generate_ofi_factor(factors, bbo, trade, depth, period=period)
-    for period in ("5s", "15s", "30s", "1m", "5m", "15m", "30m"):
+    for period in ("5s", "15s"):
         factors = generate_price_versus_mid_factor(
             factors, bbo, trade, depth, period=period
         )
@@ -150,7 +148,12 @@ def generate_factors(
 
 
 def main() -> None:
-    build_factors().write_parquet("factors.parquet")
+    with CONFIG_PATH.open("rb") as source:
+        symbol = tomllib.load(source)["data"]["symbol"]
+    factors = build_factors()
+    output_path = Path(__file__).resolve().parents[3] / "factors"
+    output_path.mkdir(parents=True, exist_ok=True)
+    factors.write_parquet(output_path / f"{symbol}_factors.parquet")
 
 
 if __name__ == "__main__":

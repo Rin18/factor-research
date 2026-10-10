@@ -10,3 +10,4 @@ wheels/
 .venv
 /binance-15-symbols
 /parquet
+/factors/
