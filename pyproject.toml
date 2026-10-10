@@ -7,7 +7,13 @@ authors = [
     { name = "Rin18", email = "106043571+Rin18@users.noreply.github.com" },
 ]
 requires-python = ">=3.15"
-dependencies = ["numpy", "polars>=2.0.0", "pyarrow", "zstandard"]
+dependencies = [
+    "matplotlib>=3.11.2",
+    "numpy",
+    "polars>=2.0.0",
+    "pyarrow",
+    "zstandard",
+]
 
 [project.scripts]
 2026-10-09-factor-research = "2026_10_09_factor_research:main"

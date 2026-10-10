@@ -1,0 +1,10 @@
+[data]
+# Paths are relative to this config file.
+input = "../../../factors"
+symbol = "GRTUSDT"
+
+[model]
+train_fraction = 0.7
+
+[output]
+directory = "../../../heatmap"
