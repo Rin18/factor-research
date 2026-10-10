@@ -19,6 +19,7 @@ import polars as pl
 # Allow relative imports when this file is run directly in the project environment.
 __package__ = "2026_10_09_factor_research.factors"
 
+from .historical_return import generate_historical_return_factor
 from .obi import generate_multi_obi_factor, generate_obi_factor
 from .ofi import generate_ofi_factor
 from .price_versus_mid import generate_price_versus_mid_factor
@@ -96,6 +97,10 @@ def generate_factors(
     depth: pl.LazyFrame,
 ) -> pl.DataFrame:
     """Append factor columns at the input timestamps and return the DataFrame."""
+    for period in ("50ms", "100ms", "500ms", "1s", "5s"):
+        factors = generate_historical_return_factor(
+            factors, bbo, trade, depth, period=period
+        )
     factors = generate_obi_factor(factors, bbo, trade, depth)
     for levels in (5, 10, 20, 50, 100):
         factors = generate_multi_obi_factor(
@@ -106,15 +111,15 @@ def generate_factors(
             levels=levels,
             decay_bps=0.5,
         )
-    for period in ("5s", "15s", "30s", "1m"):
+    for period in ("50ms", "100ms", "500ms", "1s", "5s"):
         factors = generate_rpi_factors(
             factors, bbo, trade, depth, history_period=period
         )
-    for period in ("5s", "15s", "30s", "1m"):
+    for period in ("50ms", "100ms", "500ms", "1s", "5s"):
         factors = generate_trade_imbalance_factor(
             factors, bbo, trade, depth, history_period=period
         )
-    for period in ("5s", "15s", "30s", "1m"):
+    for period in ("50ms", "100ms", "500ms", "1s", "5s"):
         factors = generate_trade_count_imbalance_factor(
             factors, bbo, trade, depth, history_period=period
         )
@@ -134,13 +139,13 @@ def generate_factors(
         pressure_period="30s",
         reference_period="1h",
     )
-    for period in ("5s", "15s", "30s", "1m"):
+    for period in ("50ms", "100ms", "500ms", "1s", "5s"):
         factors = generate_return_volume_ratio_factor(
             factors, bbo, trade, depth, period=period
         )
-    for period in ("5s", "15s", "30s", "1m"):
+    for period in ("50ms", "100ms", "500ms", "1s", "5s"):
         factors = generate_ofi_factor(factors, bbo, trade, depth, period=period)
-    for period in ("5s", "15s"):
+    for period in ("50ms", "100ms", "500ms", "1s", "5s"):
         factors = generate_price_versus_mid_factor(
             factors, bbo, trade, depth, period=period
         )
