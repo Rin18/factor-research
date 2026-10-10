@@ -57,8 +57,8 @@ def rank_ic(feature_ranks: np.ndarray, target: np.ndarray) -> np.ndarray:
                      out=np.full(feature_ranks.shape[1], np.nan), where=denominator > 0)
 
 
-def run_linear(config_path: Path = CONFIG_PATH) -> Path:
-    """Fit on earlier timestamps and return the generated heatmap path."""
+def load_data(config_path: Path = CONFIG_PATH) -> tuple:
+    """Read the configured symbol and split with a forward-return embargo."""
     config_path = Path(config_path).resolve()
     with config_path.open("rb") as source:
         config = tomllib.load(source)
@@ -97,19 +97,14 @@ def run_linear(config_path: Path = CONFIG_PATH) -> Path:
     test = test.filter(finite_factors)
     if train.height < 2 or test.height < 2:
         raise ValueError("Too few finite observations after filtering and embargo")
-    del frame
+    output = config_path.parent / config["output"]["directory"]
+    return train, test, factors, targets, symbol, fraction, embargo, output
 
-    x = train.select(factors).to_numpy()
-    y = train.select(targets).to_numpy()
-    mean = x.mean(axis=0)
-    scale = x.std(axis=0)
-    scale[scale == 0] = 1.0
-    design = np.column_stack((np.ones(len(x)), (x - mean) / scale))
-    # lstsq handles collinear factors with a minimum-norm OLS solution.
-    weights, _, rank, _ = np.linalg.lstsq(design, y, rcond=None)
-    del x, y, design, train
+
+def plot_rank_ic(test, predictions, factors, targets, symbol, fraction, embargo,
+                 output) -> Path:
+    """Write only a PNG of single-factor and combined test Rank IC."""
     test_x = test.select(factors).to_numpy()
-    predictions = ((test_x - mean) / scale) @ weights[1:] + weights[0]
     ic = np.empty((len(factors) + 1, len(targets)))
     previous_valid = None
     feature_ranks = None
@@ -125,7 +120,6 @@ def run_linear(config_path: Path = CONFIG_PATH) -> Path:
         prediction_ranks = average_ranks(predictions[valid, index:index + 1])
         ic[-1, index] = rank_ic(prediction_ranks, actual[valid])[0]
 
-    output = config_path.parent / config["output"]["directory"]
     output.mkdir(parents=True, exist_ok=True)
     path = output / f"{symbol}_linear_ic.png"
     labels = factors + ["LINEAR_COMBINED"]
@@ -150,9 +144,27 @@ def run_linear(config_path: Path = CONFIG_PATH) -> Path:
     fig.tight_layout()
     fig.savefig(path, dpi=180)
     plt.close(fig)
-    print(f"OLS rank: {rank}/{len(factors) + 1}; test rows: {test.height:,}")
     print(f"Heatmap saved to {path.resolve()}")
     return path.resolve()
+
+
+def run_linear(config_path: Path = CONFIG_PATH) -> Path:
+    """Fit on earlier timestamps and return the generated heatmap path."""
+    train, test, factors, targets, symbol, fraction, embargo, output = load_data(config_path)
+    x = train.select(factors).to_numpy()
+    y = train.select(targets).to_numpy()
+    mean = x.mean(axis=0)
+    scale = x.std(axis=0)
+    scale[scale == 0] = 1.0
+    design = np.column_stack((np.ones(len(x)), (x - mean) / scale))
+    # lstsq handles collinear factors with a minimum-norm OLS solution.
+    weights, _, rank, _ = np.linalg.lstsq(design, y, rcond=None)
+    del x, y, design, train
+    test_x = test.select(factors).to_numpy()
+    predictions = ((test_x - mean) / scale) @ weights[1:] + weights[0]
+    print(f"OLS rank: {rank}/{len(factors) + 1}; test rows: {test.height:,}")
+    return plot_rank_ic(test, predictions, factors, targets, symbol, fraction,
+                        embargo, output)
 
 
 if __name__ == "__main__":
