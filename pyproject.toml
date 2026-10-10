@@ -4,15 +4,10 @@ version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
 authors = [
-    { name = "Rin18", email = "106043571+Rin18@users.noreply.github.com" }
+    { name = "Rin18", email = "106043571+Rin18@users.noreply.github.com" },
 ]
-requires-python = ">=3.14"
-dependencies = [
-    "numpy",
-    "polars>=2.0.0",
-    "pyarrow",
-    "zstandard",
-]
+requires-python = ">=3.15"
+dependencies = ["numpy", "polars>=2.0.0", "pyarrow", "zstandard"]
 
 [project.scripts]
 2026-10-09-factor-research = "2026_10_09_factor_research:main"
