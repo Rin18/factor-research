@@ -1,0 +1,20 @@
+[package]
+name = "factor-research-public"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+infra-core = { path = "../mini-infra/crates/core" }
+infra-adapters = { path = "../mini-infra/crates/adapters" }
+infra-kernel = { path = "../mini-infra/crates/kernel" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+arrow-schema = "57"
+parquet = { version = "57", default-features = false, features = ["arrow", "zstd"] }
+serde_arrow = { version = "0.14", features = ["arrow-57"] }
+lightgbm3 = "1.0.11"
+
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1

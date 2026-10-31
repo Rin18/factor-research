@@ -1,0 +1,11 @@
+[project]
+name = "train"
+version = "0.1.0"
+description = "Train LightGBM pricing models on factor samples"
+requires-python = ">=3.15"
+dependencies = [
+    "lightgbm>=4.6",
+    "numpy>=2",
+    "pyarrow>=21",
+    "scipy>=1.15",
+]
